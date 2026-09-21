@@ -97,6 +97,7 @@ KubeForge/
 ├── README.md                 # クイックスタート
 ├── Makefile                  # build / cluster-up / lab-deploy / audit などの操作
 ├── docker/Dockerfile         # Arch Linux 診断コンテナ (kubectl, trivy, kube-bench, nmap, python, go)
+│                             # amd64/arm64 ともネイティブビルド対応（マルチステージ、後述）
 ├── kind/
 │   ├── kind-config.yaml      # kind クラスタ設定（3ノード、デフォルト CNI 無効化）
 │   └── calico/               # NetworkPolicy 対応 CNI (Calico) の導入設定
@@ -109,6 +110,25 @@ KubeForge/
 ```
 
 詳細な使い方は [README.md](README.md) を参照。
+
+## 診断コンテナのマルチアーキテクチャ対応
+
+`docker/Dockerfile` はマルチステージ構成で amd64 / arm64 双方をネイティブビルドする
+（`docker build`、buildx とも `--platform` 指定なしでホストのアーキテクチャに
+合わせてビルドされる）。
+
+- amd64: 公式の `archlinux:latest`（Docker Hub, `docker.io/library/archlinux`）をそのまま使用。
+- arm64: 公式 archlinux イメージは amd64 のみ提供のため、Arch Linux ARM
+  (ALARM, archlinuxarm.org — Arch Linux の姉妹プロジェクトで ARM 移植版) の
+  rootfs (`http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz`)
+  を取得して `FROM scratch` に展開したものを使用。ALARM は独自の pacman 署名鍵を
+  持つため `pacman-key --init && pacman-key --populate archlinuxarm` を実行してから
+  パッケージを導入する。
+
+Apple Silicon 上で QEMU エミュレーションを避けてネイティブ arm64 ビルドにするための
+選択であり、`menci/archlinuxarm` のような非公式イメージより ALARM 公式配布物を
+優先している（セキュリティ診断ツールというプロジェクトの性質上、サプライチェーンの
+出所をできるだけ公式なものに揃えるため）。
 
 ## エージェントへの指示
 

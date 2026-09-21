@@ -3,6 +3,9 @@
 Kubernetes のセキュリティ診断（RBAC・Pod Security・NetworkPolicy・コンテナイメージ）に特化した、
 Arch Linux ベースの診断コンテナ + kind ラボ環境。詳しい設計方針は [AGENTS.md](AGENTS.md) を参照。
 
+診断コンテナは amd64 / arm64 (Apple Silicon 含む) の両方をネイティブビルド対応
+(エミュレーション不要)。詳細は [docker/Dockerfile](docker/Dockerfile) を参照。
+
 ## 前提
 
 - Docker Desktop（Apple Silicon / Intel 両対応）
