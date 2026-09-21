@@ -1,0 +1,115 @@
+# AGENTS.md
+
+このファイルは、KubeForge リポジトリで作業する AI エージェント（Claude Code など）向けのガイドです。
+
+## プロジェクト概要
+
+**KubeForge** は、Kubernetes クラスタのセキュリティ診断（構成ミス・権限設定・ネットワーク分離・コンテナセキュリティの検証）に特化した、Arch Linux ベースの Docker 環境です。単なるツール寄せ集めのペネトレーションテスト用イメージではなく、Kubernetes 特有の攻撃面（RBAC、Pod Security、NetworkPolicy、コンテナ/イメージ）を体系的に検証できるラボ環境として設計します。
+
+対象読者: 認可されたセキュリティ診断・CTF・学習目的でこの環境を使う人。**実運用クラスタへの適用は、必ず正当な権限と許可がある場合に限る。**
+
+## アーキテクチャ
+
+```text
+macOS (Apple Silicon)
+└─ Docker Desktop
+   └─ Kubernetes Lab
+      ├─ Arch Pentest Container（診断コンテナ）
+      │   ├─ kubectl
+      │   ├─ kube-bench
+      │   ├─ Trivy
+      │   ├─ Nmap
+      │   └─ Python / Go
+      │        │  Kubernetes API 経由でアクセス
+      │        ▼
+      └─ Kubernetes Cluster（kind 上に構築）
+          ├─ Control Plane
+          ├─ Worker Nodes
+          └─ Test Namespaces（RBAC / NetworkPolicy 検証用）
+```
+
+設計上のポイント:
+
+- 診断コンテナとクラスタを分離し、Kubernetes API へのアクセス権限を限定する
+- RBAC・NetworkPolicy を実際に検証できる構成にする（NetworkPolicy はリソースを作るだけでは機能せず、対応する CNI が必要）
+- 脆弱な設定をあえて再現するテスト用 Namespace を用意する
+- 診断結果は JSON / Markdown で保存する
+
+## 採用構成（決定事項）
+
+以下の組み合わせを初期構成として採用する。
+
+| 項目 | 採用 |
+| --- | --- |
+| ① クラスタ | A. kind（Docker 上に構築） |
+| ② 診断対象 | A. 自分で構築した脆弱な Kubernetes ラボ（再現可能なラボを最優先） |
+| ③ ディストリビューション方向性 | D. Kubernetes ペンテスター向け独自ディストリビューション（Arch Linux ベース） |
+
+まず再現可能な脆弱ラボを構築し、RBAC・Pod Security・NetworkPolicy の検証をそれぞれ分離して実施できる状態にしてから、実運用クラスタへの適用を検討する。
+
+## 技術スタック
+
+| 機能 | 採用候補 |
+| --- | --- |
+| 診断 OS | Arch Linux |
+| クラスタ | kind |
+| CLI | kubectl |
+| イメージ診断 | Trivy |
+| Kubernetes 設定監査 | kube-bench |
+| RBAC 確認 | kubectl / 専用スクリプト |
+| ネットワーク | NetworkPolicy 対応 CNI |
+| ポリシー | Pod Security Admission |
+| 出力 | JSON / Markdown |
+
+## 検証するセキュリティ項目
+
+### A. RBAC
+- 過剰な権限を持つ ServiceAccount
+- 不要な ClusterRoleBinding
+- `*` による過度な権限付与
+- Namespace 間の権限分離
+
+### B. Pod Security
+- privileged コンテナ
+- hostNetwork / hostPID / hostIPC
+- root 実行
+- Linux capabilities
+- Seccomp 設定
+- Pod Security Standards の 3 レベル（Privileged / Baseline / Restricted）に基づく評価
+
+### C. ネットワーク
+- Namespace 間通信
+- 不要な Ingress / Egress
+- NetworkPolicy の有無
+- 外部接続の制御
+
+### D. コンテナ・イメージ
+- 脆弱性を含むイメージ（Trivy）
+- root 実行
+- 不要な Linux capabilities
+- イメージの出所・タグ管理
+
+## リポジトリ構成（想定）
+
+まだファイルは存在しない。今後追加する際は以下を目安にする。
+
+```text
+KubeForge/
+├── AGENTS.md
+├── README.md
+├── docker/                 # Arch Linux 診断コンテナの Dockerfile
+├── kind/                   # kind クラスタ設定（kind-config.yaml 等）
+├── manifests/
+│   ├── vulnerable-lab/     # 意図的に脆弱な構成を再現する Namespace/マニフェスト
+│   └── policies/           # NetworkPolicy, Pod Security 設定例
+├── scripts/                # RBAC 確認・診断自動化スクリプト（Python/Go）
+└── reports/                # 診断結果の出力先（JSON/Markdown）
+```
+
+## エージェントへの指示
+
+- **対象範囲の遵守**: このリポジトリのツール・スクリプトは、`manifests/vulnerable-lab/` 配下など明示的にラボ用と分かる Kubernetes クラスタ、または利用者が管理者権限を持つ kind クラスタに対してのみ実行する。実運用クラスタや第三者が管理するクラスタへの診断コマンド実行は、利用者から明確な許可を得るまで行わない。
+- **破壊的操作の回避**: `kubectl delete`、RBAC の変更、NetworkPolicy の削除など状態を変更する操作は、診断（読み取り専用）ではなく環境構築の一部である場合のみ行い、事前に何を変更するか利用者に説明する。
+- **診断ツールの追加**: 新しいツールを Docker イメージに追加する場合は、Arch Linux の `pacman`/AUR で入手可能なものを優先する。
+- **結果の保存**: 診断スクリプトの出力は `reports/` 配下に JSON または Markdown で保存する形を基本とする。
+- **コミットメッセージ・コード内コメント**: 既存の慣習がない限り、日本語で簡潔に記述する。
