@@ -24,6 +24,9 @@ Arch Linux ベースの診断コンテナ + kind ラボ環境。詳しい設計�
   apiserver/controller-manager/scheduler のフラグを変更し、kube-bench の FAIL 数が
   実際にどう変化するかをその場で検証できる（本リポジトリでは FAIL 12件→4件まで
   是正済み。経緯は git log 参照）。
+- **攻撃チェーンの可視化**: `make audit` のたびに `reports/<timestamp>/dashboard.html`
+  が自動生成される。KPI サマリー・攻撃チェーンのカード表示に加え、namespace と
+  ノードの実際の配置に侵害経路を重ねた**トポロジー図**をブラウザで確認できる。
 - **amd64/arm64 両対応の診断コンテナ単体利用**: `make shell` で kubectl・trivy・
   kube-bench・nmap・python・go の入った環境に入り、任意のコマンドを手動で試せる。
 
