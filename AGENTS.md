@@ -106,7 +106,8 @@ KubeForge/
 │   ├── policies/             # NetworkPolicy, Pod Security 設定例（比較用の安全な構成）
 │   └── audits/               # kube-bench 実行用 Job
 ├── scripts/                  # RBAC / Pod Security / Network / Image 監査スクリプト（Python、攻撃チェーン検出込み）
-└── reports/                  # 診断結果の出力先（JSON/Markdown、gitignore 対象）
+│                             # + generate_dashboard.py（HTML ダッシュボード生成）
+└── reports/                  # 診断結果の出力先（JSON/Markdown/dashboard.html、gitignore 対象）
 ```
 
 詳細な使い方は [README.md](README.md) を参照。
@@ -162,6 +163,37 @@ DaemonSet（CNI/CSI 等）や、`system:masters` のような組み込みの Gro
    ライブ実行し、期待件数と一致するか確認
 3. 可能であれば `kubectl exec` / `kubectl create token` / 別 namespace からの
    `curl` などで実際に攻撃を成立させ、検出が机上の空論でないことを実証する
+
+## HTML ダッシュボード
+
+`scripts/generate_dashboard.py` は `run_all.sh` の最終ステップとして各監査の
+JSON (`rbac_audit.json` / `pod_security_audit.json` / `network_audit.json` /
+`image_audit.json`) と `kube_bench.log` を読み込み、`reports/<timestamp>/dashboard.html`
+を生成する。`make audit` を実行するたびに自動で作られる。
+
+**データ駆動が原則**: チェーンの内容・件数をハードコードしない。各監査スクリプトの
+JSON にある人間可読な `detail` 文字列をそのままカードに表示し、トポロジー図
+（namespace / ノードの配置と侵害経路）も `kubectl get pods` からその場で取得した
+実際のスケジュール先ノードを使ってレイアウトする。そのため vulnerable-lab の
+内容が将来変わっても (Pod が増減する、別のノードにスケジュールされる等)
+そのまま正しく反映される。RBAC のトークン昇格は namespace 内の権限関係であり
+ネットワーク境界を越える話ではないため、トポロジー図には含めず専用のカードのみで示す。
+
+**実装時に踏んだ落とし穴** (今後 HTML を生成するスクリプトを書く/直す際の注意):
+- `Path.write_text()` に `encoding="utf-8"` を指定し忘れ、環境によって日本語が
+  文字化けした。生成した HTML は必ず `encoding="utf-8"` で書き出し、
+  `<meta charset="utf-8">` も入れること。
+- チェーンの detail に `<br>` を含めて改行させたい箇所で、カード組み立て関数
+  (`chain_card`) が受け取った文字列を再度 `esc()` してしまい、`<br>` がタグで
+  はなく文字列として表示された。「呼び出し側が esc 済みの安全な HTML を渡す」
+  という責務を関数の docstring で明示すること。
+- トポロジー図で、同じ Pod が複数の理由 (hostPath 用・hostPID 用など) で
+  breakout_chains に複数回登場すると、同じ矢印が重ねて描画されラベルが
+  読めなくなった。`(namespace, pod, node, 矢印種別)` で重複除去してから描画する。
+- これらはすべて **実際にブラウザで生成物を開いて確認して** 見つかった。
+  JSON の中身が正しくても、テンプレート化の過程 (エスケープ処理・レイアウト
+  計算) にバグが入り込みうるので、コードを書いただけで済ませず、
+  ローカル HTTP サーバーなどで実際にレンダリングして目視確認すること。
 
 ## コミットメッセージ規約
 
