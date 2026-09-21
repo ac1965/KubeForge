@@ -16,7 +16,15 @@ cluster-up:
 	# last-applied-configuration 注釈の上限を超えるため --server-side を使う。
 	kubectl apply --server-side --force-conflicts \
 		-f https://raw.githubusercontent.com/projectcalico/calico/$(CALICO_VERSION)/manifests/tigera-operator.yaml
+	# CRD (Installation 等) が API サーバーの discovery に反映されるまで待ってから
+	# custom-resources.yaml を適用する (反映前に適用すると "no matches for kind"
+	# エラーで失敗する競合状態がある)。
+	kubectl wait --for=condition=Established --timeout=60s crd/installations.operator.tigera.io
 	kubectl apply -f kind/calico/custom-resources.yaml
+	# calico-system namespace と Deployment は tigera-operator が Installation を
+	# reconcile した後に作成するため、rollout status の前に存在確認を待つ。
+	kubectl wait --for=create namespace/calico-system --timeout=120s
+	kubectl wait --for=create -n calico-system deployment/calico-kube-controllers --timeout=120s
 	kubectl -n calico-system rollout status deployment/calico-kube-controllers --timeout=180s
 	kind get kubeconfig --name $(CLUSTER_NAME) --internal > $(KUBECONFIG_INTERNAL)
 
