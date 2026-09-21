@@ -59,7 +59,7 @@ macOS (Apple Silicon)
 | RBAC 確認 | kubectl / 専用スクリプト |
 | ネットワーク | NetworkPolicy 対応 CNI |
 | ポリシー | Pod Security Admission |
-| 出力 | JSON / Markdown |
+| 出力 | JSON / Markdown / HTML（ダッシュボード） |
 
 ## 検証するセキュリティ項目
 
@@ -218,5 +218,5 @@ JSON にある人間可読な `detail` 文字列をそのままカードに表�
 - **対象範囲の遵守**: このリポジトリのツール・スクリプトは、`manifests/vulnerable-lab/` 配下など明示的にラボ用と分かる Kubernetes クラスタ、または利用者が管理者権限を持つ kind クラスタに対してのみ実行する。実運用クラスタや第三者が管理するクラスタへの診断コマンド実行は、利用者から明確な許可を得るまで行わない。
 - **破壊的操作の回避**: `kubectl delete`、RBAC の変更、NetworkPolicy の削除など状態を変更する操作は、診断（読み取り専用）ではなく環境構築の一部である場合のみ行い、事前に何を変更するか利用者に説明する。
 - **診断ツールの追加**: 新しいツールを Docker イメージに追加する場合は、Arch Linux の `pacman`/AUR で入手可能なものを優先する。
-- **結果の保存**: 診断スクリプトの出力は `reports/` 配下に JSON または Markdown で保存する形を基本とする。
+- **結果の保存**: 診断スクリプトの出力は `reports/` 配下に JSON または Markdown で保存する形を基本とする。加えて `make audit` の最終ステップで `generate_dashboard.py` がそれらを集約した `dashboard.html` を生成する（詳細は「HTML ダッシュボード」節）。
 - **コミットメッセージ・コード内コメント**: コミットメッセージは上記「コミットメッセージ規約」に従う。コード内コメントは既存の慣習がない限り、日本語で簡潔に記述する。
