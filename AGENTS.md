@@ -105,7 +105,7 @@ KubeForge/
 │   ├── vulnerable-lab/       # 意図的に脆弱な構成を再現する Namespace/マニフェスト
 │   ├── policies/             # NetworkPolicy, Pod Security 設定例（比較用の安全な構成）
 │   └── audits/               # kube-bench 実行用 Job
-├── scripts/                  # RBAC / Pod Security / Network 監査スクリプト（Python）
+├── scripts/                  # RBAC / Pod Security / Network / Image 監査スクリプト（Python、攻撃チェーン検出込み）
 └── reports/                  # 診断結果の出力先（JSON/Markdown、gitignore 対象）
 ```
 
@@ -129,6 +129,39 @@ Apple Silicon 上で QEMU エミュレーションを避けてネイティブ ar
 選択であり、`menci/archlinuxarm` のような非公式イメージより ALARM 公式配布物を
 優先している（セキュリティ診断ツールというプロジェクトの性質上、サプライチェーンの
 出所をできるだけ公式なものに揃えるため）。
+
+## 攻撃チェーン検出の設計方針
+
+`scripts/` 配下の4つの監査スクリプト（RBAC / Pod Security / Network / Image）は、
+いずれも「個別の所見を並べるだけ」で終わらせず、**単体では見過ごされがちな所見同士
+が組み合わさると実際に悪用できてしまう経路（攻撃チェーン）** を検出する関数を持つ。
+これは単なる網羅性向上ではなく、実際に kind クラスタ上で手動 PoC を行った上で
+「この組み合わせは本当に悪用できる」と確認してから実装した検出ロジックである。
+
+| スクリプト | チェーン検出関数 | 検出するチェーン |
+| --- | --- | --- |
+| `rbac_audit.py` | `find_token_escalation_paths` | ある namespace 内で `serviceaccounts/token` の create 権限を持つ ServiceAccount が、同じ namespace 内の cluster-admin 付き ServiceAccount へ `kubectl create token` でなりすませる（RoleBinding は namespace スコープに見えるが実質的に無意味化する） |
+| `pod_security_audit.py` | `find_breakout_chains` | privileged/特権 capability + hostPath マウント（ホストのファイルシステムに直接アクセス）、または + hostPID（`/proc/1/root` 経由でホストプロセスへ侵入）によるノード乗っ取り |
+| `network_audit.py` | `find_permissive_rules` / `find_hostnetwork_bypass` | NetworkPolicy が存在してもルールに `from`/`to` が無ければ実質全許可、hostNetwork の Pod は NetworkPolicy の適用対象外（namespace に NetworkPolicy があっても効かない） |
+| `image_audit.py` | `find_image_chains` | Trivy が検出した CRITICAL/HIGH 脆弱性を持つイメージが、`pod_security_audit.py` と同じ判定基準でノード脱出手段（privileged/hostPath/hostNetwork 等）も持つ Pod で稼働している |
+
+**繰り返し踏んだ落とし穴**: これらのチェーン検出は `kube-system` / `calico-system` /
+`calico-apiserver` / `tigera-operator` といった system namespace の正当な
+DaemonSet（CNI/CSI 等）や、`system:masters` のような組み込みの Group/User を
+誤検出しやすい（privileged + hostPath は CNI にとって正当な構成であり、
+`system:masters` は最初から cluster-admin なので「昇格」ではない）。
+このセッションで RBAC・Pod Security・Network の3つとも同じノイズに一度は
+引っかかった。**新しいチェーン検出を追加するときは、最初から `EXEMPT_NAMESPACES`
+（各スクリプトで定義済み）での除外、および RBAC の場合は subject を
+`kind: ServiceAccount` に絞る、といったフィルタを組み込むこと。**
+
+**検証手順**: 新しいチェーン検出を追加する際は次の3段階を踏む。
+1. `manifests/vulnerable-lab/` の実際の構成を模したモックデータで単体テスト
+   （検出されるべきケースと、されるべきでないケース＝false positive 候補の両方）
+2. kind クラスタを実際に構築し、対象マニフェストをデプロイしてスクリプトを
+   ライブ実行し、期待件数と一致するか確認
+3. 可能であれば `kubectl exec` / `kubectl create token` / 別 namespace からの
+   `curl` などで実際に攻撃を成立させ、検出が机上の空論でないことを実証する
 
 ## エージェントへの指示
 
