@@ -79,6 +79,7 @@ RUN set -eux; \
 RUN useradd -m -s /bin/bash forger
 WORKDIR /workspace
 COPY scripts/ /workspace/scripts/
+COPY manifests/audits/ /workspace/manifests/audits/
 RUN chown -R forger:forger /workspace
 
 USER forger

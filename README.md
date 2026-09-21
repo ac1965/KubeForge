@@ -25,11 +25,8 @@ make cluster-up
 make lab-deploy
 make policies-deploy
 
-# 4. 診断コンテナから RBAC / Pod Security / Network / イメージ脆弱性を監査
+# 4. 診断コンテナから RBAC / Pod Security / Network / kube-bench / イメージ脆弱性を監査
 make audit
-
-# 5. (任意) CIS Kubernetes Benchmark を実行
-make kube-bench
 
 # 後片付け
 make cluster-down
@@ -63,8 +60,8 @@ KubeForge/
 | RBAC | `scripts/rbac_audit.py` | `cluster-admin` バインド、ワイルドカード権限の Role/ClusterRole |
 | Pod Security | `scripts/pod_security_audit.py` | privileged、hostNetwork/PID/IPC、root 実行、hostPath マウント、limits 未設定 |
 | ネットワーク | `scripts/network_audit.py` | NetworkPolicy が存在しない Namespace |
+| ノード設定 | `manifests/audits/kube-bench-job.yaml`（`run_all.sh` から自動実行） | CIS Kubernetes Benchmark |
 | イメージ | `scripts/run_all.sh` 内の Trivy 呼び出し | クラスタ上で稼働中イメージの既知脆弱性 |
-| ノード設定 | `manifests/audits/kube-bench-job.yaml` | CIS Kubernetes Benchmark |
 
 kube-bench の FAIL のうち、apiserver/controller-manager/scheduler の起動フラグで
 是正できるもの(profiling 無効化、監査ログ設定、ServiceAccount トークン長期化の禁止)は

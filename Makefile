@@ -33,13 +33,16 @@ lab-deploy:
 policies-deploy:
 	kubectl apply -f manifests/policies/
 
-## kube-bench (CIS Benchmark) を control-plane ノード上の Job として実行する
+## kube-bench (CIS Benchmark) を control-plane ノード上の Job として単体実行する
+## (audit ターゲットの run_all.sh 経由でも自動実行されるが、素早く単体で
+## 確認したいときのショートカットとして残している)
 kube-bench:
 	kubectl apply -f manifests/audits/kube-bench-job.yaml
 	kubectl wait --for=condition=complete job/kube-bench --timeout=120s
 	kubectl logs job/kube-bench
 
 ## 診断コンテナを kind クラスタの Docker ネットワークに接続して全監査を実行する
+## (RBAC / Pod Security / Network / kube-bench / Trivy イメージスキャン)
 audit:
 	docker run --rm \
 		--network kind \
