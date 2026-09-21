@@ -45,5 +45,8 @@ kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.con
         || echo "      ! trivy failed for $image"
     done
 
+echo "[*] Image vulnerability chain audit"
+python3 scripts/image_audit.py "$OUT/image_audit.json" "$OUT/image_audit.md"
+
 cat "$OUT"/*.md > "$OUT/summary.md"
 echo "[*] Done: $OUT"

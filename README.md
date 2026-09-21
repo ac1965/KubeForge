@@ -104,7 +104,7 @@ KubeForge/
 │   ├── vulnerable-lab/       # 意図的に脆弱な RBAC / Pod 設定（検出対象）
 │   ├── policies/             # Pod Security Standards + NetworkPolicy の良い例
 │   └── audits/               # kube-bench 実行用 Job
-├── scripts/                  # RBAC / Pod Security / Network 監査スクリプト (Python)
+├── scripts/                  # RBAC / Pod Security / Network / イメージ 監査スクリプト (Python)
 └── reports/                  # 診断結果の出力先（gitignore 対象、.gitkeep のみ管理）
 ```
 
@@ -112,11 +112,16 @@ KubeForge/
 
 | カテゴリ | スクリプト | 検出内容 |
 | --- | --- | --- |
-| RBAC | `scripts/rbac_audit.py` | `cluster-admin` バインド、ワイルドカード権限の Role/ClusterRole |
-| Pod Security | `scripts/pod_security_audit.py` | privileged、hostNetwork/PID/IPC、root 実行、hostPath マウント、limits 未設定 |
-| ネットワーク | `scripts/network_audit.py` | NetworkPolicy が存在しない Namespace |
+| RBAC | `scripts/rbac_audit.py` | `cluster-admin` バインド、ワイルドカード権限の Role/ClusterRole、および **ServiceAccount トークンなりすましによる権限昇格チェーン** |
+| Pod Security | `scripts/pod_security_audit.py` | privileged、hostNetwork/PID/IPC、root 実行、hostPath マウント、limits 未設定、および **コンテナ→ノード乗っ取りチェーン** (privileged+hostPath / privileged+hostPID) |
+| ネットワーク | `scripts/network_audit.py` | NetworkPolicy が存在しない Namespace、**実効性のないルール**（from/to 未指定で全許可）、**hostNetwork による NetworkPolicy バイパス** |
+| イメージ | `scripts/image_audit.py`（Trivy 呼び出し） + `scripts/run_all.sh` 内の Trivy 全イメージスキャン | クラスタ上で稼働中イメージの既知脆弱性、および **CRITICAL/HIGH 脆弱性を持つイメージ×ノード脱出手段の組み合わせチェーン** |
 | ノード設定 | `manifests/audits/kube-bench-job.yaml`（`run_all.sh` から自動実行） | CIS Kubernetes Benchmark |
-| イメージ | `scripts/run_all.sh` 内の Trivy 呼び出し | クラスタ上で稼働中イメージの既知脆弱性 |
+
+RBAC・Pod Security・ネットワーク・イメージの4監査はいずれも、個別の所見を
+並べるだけでなく「それぞれ単体では見過ごされがちな所見同士が組み合わさると
+実際に悪用できてしまう経路（攻撃チェーン）」を検出する。すべて実際に kind
+クラスタ上で悪用可能であることを検証済み（詳細は各コミットログを参照）。
 
 kube-bench の FAIL のうち、apiserver/controller-manager/scheduler の起動フラグで
 是正できるもの(profiling 無効化、監査ログ設定、ServiceAccount トークン長期化の禁止)は
