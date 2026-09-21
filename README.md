@@ -6,6 +6,44 @@ Arch Linux ベースの診断コンテナ + kind ラボ環境。詳しい設計�
 診断コンテナは amd64 / arm64 (Apple Silicon 含む) の両方をネイティブビルド対応
 (エミュレーション不要)。詳細は [docker/Dockerfile](docker/Dockerfile) を参照。
 
+## できること
+
+- **再現可能な脆弱 Kubernetes ラボの構築**: `kind` + Calico で 3 ノードクラスタを
+  一発で立て、`manifests/vulnerable-lab/`（意図的に脆弱な RBAC・Pod 設定）と
+  `manifests/policies/`（Pod Security Standards + NetworkPolicy の良い例）を
+  並べてデプロイし、Before/After を比較できる。
+- **ワンコマンドでの多面的セキュリティ監査**: `make audit` 一発で以下がすべて
+  自動実行され、`reports/<timestamp>/` に JSON + Markdown で残る。
+  - RBAC: `cluster-admin` バインドやワイルドカード権限の検出
+  - Pod Security: privileged・hostNetwork/PID/IPC・root 実行・hostPath マウントなど
+  - ネットワーク: NetworkPolicy が存在しない Namespace の洗い出し
+  - CIS Kubernetes Benchmark（kube-bench）によるノード/コントロールプレーン設定監査
+  - Trivy によるクラスタ上稼働中イメージの既知脆弱性スキャン
+- **Hardening 施策の効果測定**: `kind/kind-config.yaml` の `kubeadmConfigPatches` で
+  apiserver/controller-manager/scheduler のフラグを変更し、kube-bench の FAIL 数が
+  実際にどう変化するかをその場で検証できる（本リポジトリでは FAIL 12件→4件まで
+  是正済み。経緯は git log 参照）。
+- **amd64/arm64 両対応の診断コンテナ単体利用**: `make shell` で kubectl・trivy・
+  kube-bench・nmap・python・go の入った環境に入り、任意のコマンドを手動で試せる。
+
+## 活用シーン
+
+- **学習・研修**: RBAC のワイルドカード権限や privileged コンテナなど、
+  典型的な Kubernetes の設定ミスをハンズオンで再現し、診断ツールがどう検出するか
+  実際に手を動かして確認する。
+- **診断スクリプト/ワークフローのリハーサル**: 実運用クラスタに診断をかける前に、
+  このラボで `scripts/` の監査ロジックや `kube-bench` の挙動を安全に試す。
+- **Hardening 施策の検証**: kubeadm の起動フラグや NetworkPolicy 変更が
+  CIS Benchmark や監査結果にどう効くかを、使い捨てクラスタで気軽に試行錯誤する。
+- **CTF・セキュリティ研究**: 権限昇格（wildcard RBAC → cluster-admin）や
+  コンテナブレイクアウト（privileged + hostPath）などの攻撃プリミティブを
+  再現可能な環境で練習する。
+- **チームのオンボーディング教材**: 脆弱な構成と安全な構成を並べて見せることで、
+  Pod Security Standards や NetworkPolicy の必要性を具体例で説明する。
+
+実運用クラスタや第三者管理のクラスタへの適用範囲については
+[AGENTS.md](AGENTS.md) のルールに従うこと。
+
 ## 前提
 
 - Docker Desktop（Apple Silicon / Intel 両対応）
