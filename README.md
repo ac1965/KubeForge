@@ -35,6 +35,23 @@ make cluster-down
 `make audit` の結果は `reports/<timestamp>/` 配下に JSON と Markdown で出力される
 (`summary.md` が全体のまとめ)。
 
+`scripts/` と `manifests/audits/` は `docker/Dockerfile` の `COPY` でイメージに
+焼き込まれる（実行時にマウントはしない）ため、これらを編集したら
+`make audit` / `make shell` の前に **`make build` を再実行**すること。
+
+## その他のコマンド
+
+```bash
+# kube-bench だけを素早く単体実行したいとき
+make kube-bench
+
+# 診断コンテナに対話シェルで入り、kubectl/trivy/nmap 等を手動で試す
+make shell
+
+# ローカルの生成物 (reports/, kind の内部 kubeconfig) を削除
+make clean
+```
+
 ## ディレクトリ構成
 
 ```text
