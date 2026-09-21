@@ -309,6 +309,7 @@ def build_topology(pod_sec: dict, net: dict, img: dict, pods_by_key: dict) -> tu
     """
     ns_entities: dict[str, list] = {}
     node_targets: list = []  # (namespace, pod, node, label, style) の一覧
+    seen_arrows: set = set()  # 同じ Pod が複数の breakout 理由を持っても矢印は1本にまとめる
 
     for c in pod_sec.get("breakout_chains", []):
         key = (c["namespace"], c["pod"])
@@ -317,7 +318,9 @@ def build_topology(pod_sec: dict, net: dict, img: dict, pods_by_key: dict) -> tu
         tag = f"{c['pod']} [breakout]"
         if tag not in labels:
             labels.append(tag)
-        if node_name:
+        arrow_key = (c["namespace"], c["pod"], node_name, "breakout")
+        if node_name and arrow_key not in seen_arrows:
+            seen_arrows.add(arrow_key)
             node_targets.append({
                 "ns": c["namespace"], "pod": c["pod"], "node": node_name,
                 "label": "privileged breakout", "solid": True,
@@ -330,7 +333,9 @@ def build_topology(pod_sec: dict, net: dict, img: dict, pods_by_key: dict) -> tu
         tag = f"{b['pod']} [hostNetwork]"
         if tag not in labels:
             labels.append(tag)
-        if node_name:
+        arrow_key = (b["namespace"], b["pod"], node_name, "hostnetwork")
+        if node_name and arrow_key not in seen_arrows:
+            seen_arrows.add(arrow_key)
             node_targets.append({
                 "ns": b["namespace"], "pod": b["pod"], "node": node_name,
                 "label": "hostNetwork", "solid": False,
