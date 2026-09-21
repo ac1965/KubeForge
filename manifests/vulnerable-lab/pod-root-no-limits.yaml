@@ -1,0 +1,16 @@
+# Pod Security 検証用: root 実行 (runAsNonRoot 未設定) かつ resource limits なし。
+# このネームスペースには NetworkPolicy を意図的に置いていないため、
+# 他 namespace からの通信も無制限に許可される。
+apiVersion: v1
+kind: Pod
+metadata:
+  name: root-no-limits
+  namespace: vulnerable-lab
+  labels:
+    app: root-no-limits
+spec:
+  containers:
+    - name: app
+      image: docker.io/library/nginx:1.27
+      ports:
+        - containerPort: 80

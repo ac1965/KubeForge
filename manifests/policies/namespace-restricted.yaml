@@ -1,0 +1,11 @@
+# Pod Security Standards (restricted) を強制する比較用 Namespace。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: secure-namespace
+  labels:
+    kubeforge.io/purpose: secure-baseline
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

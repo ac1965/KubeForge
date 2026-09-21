@@ -1,0 +1,14 @@
+# diagnostic output
+/reports/*/
+!/reports/.gitkeep
+
+# generated kubeconfigs
+/kind/kubeconfig-internal.yaml
+*.kubeconfig
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Claude Code local runtime state
+.claude/

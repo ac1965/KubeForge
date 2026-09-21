@@ -1,0 +1,11 @@
+# secure-namespace 内の全 Pod に対する ingress/egress デフォルト拒否。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: secure-namespace
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

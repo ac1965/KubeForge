@@ -1,0 +1,23 @@
+# Tigera operator 用カスタムリソース。kind/kind-config.yaml の podSubnet
+# (192.168.0.0/16) と一致させること。tigera-operator.yaml 自体は
+# アップストリームの公式マニフェストを直接 apply する (Makefile の
+# cluster-up を参照)。
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  calicoNetwork:
+    ipPools:
+      - name: default-ipv4-ippool
+        blockSize: 26
+        cidr: 192.168.0.0/16
+        encapsulation: VXLANCrossSubnet
+        natOutgoing: Enabled
+        nodeSelector: all()
+---
+apiVersion: operator.tigera.io/v1
+kind: APIServer
+metadata:
+  name: default
+spec: {}

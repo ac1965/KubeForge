@@ -1,0 +1,45 @@
+# RBAC 検証用: 過剰な権限を持つ ServiceAccount と ClusterRoleBinding。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: over-permissive-sa
+  namespace: vulnerable-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: over-permissive-sa-cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: over-permissive-sa
+    namespace: vulnerable-lab
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+# ワイルドカードで全リソース・全動詞を許可する ClusterRole。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wildcard-role
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+# default ServiceAccount に対して名前空間内で wildcard-role を付与
+# (権限昇格の再現用)。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: default-sa-wildcard
+  namespace: vulnerable-lab
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: vulnerable-lab
+roleRef:
+  kind: ClusterRole
+  name: wildcard-role
+  apiGroup: rbac.authorization.k8s.io

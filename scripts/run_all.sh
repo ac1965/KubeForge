@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# 全診断スクリプトを実行し、reports/<timestamp>/ に結果を保存する。
+# 診断コンテナ内 (kubectl が対象クラスタに到達可能な状態) で実行すること。
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+TS=$(date +%Y%m%d-%H%M%S)
+OUT="reports/${TS}"
+mkdir -p "$OUT/trivy"
+
+echo "[*] RBAC audit"
+python3 scripts/rbac_audit.py "$OUT/rbac_audit.json" "$OUT/rbac_audit.md"
+
+echo "[*] Pod Security audit"
+python3 scripts/pod_security_audit.py "$OUT/pod_security_audit.json" "$OUT/pod_security_audit.md"
+
+echo "[*] Network audit"
+python3 scripts/network_audit.py "$OUT/network_audit.json" "$OUT/network_audit.md"
+
+echo "[*] Image vulnerability scan (trivy)"
+kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' \
+  | sort -u \
+  | while read -r image; do
+      [ -z "$image" ] && continue
+      safe=$(echo "$image" | tr '/:' '__')
+      echo "    - $image"
+      trivy image --quiet --format json --output "$OUT/trivy/${safe}.json" "$image" \
+        || echo "      ! trivy failed for $image"
+    done
+
+cat "$OUT"/*.md > "$OUT/summary.md"
+echo "[*] Done: $OUT"

@@ -1,0 +1,9 @@
+# 意図的に脆弱な構成を再現する Namespace。
+# Pod Security の enforce ラベルを付けていないため privileged な Pod も
+# そのまま作成できる（検証対象として意図的に緩い状態にしている）。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vulnerable-lab
+  labels:
+    kubeforge.io/purpose: vulnerable-lab

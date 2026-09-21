@@ -89,22 +89,26 @@ macOS (Apple Silicon)
 - 不要な Linux capabilities
 - イメージの出所・タグ管理
 
-## リポジトリ構成（想定）
-
-まだファイルは存在しない。今後追加する際は以下を目安にする。
+## リポジトリ構成
 
 ```text
 KubeForge/
 ├── AGENTS.md
-├── README.md
-├── docker/                 # Arch Linux 診断コンテナの Dockerfile
-├── kind/                   # kind クラスタ設定（kind-config.yaml 等）
+├── README.md                 # クイックスタート
+├── Makefile                  # build / cluster-up / lab-deploy / audit などの操作
+├── docker/Dockerfile         # Arch Linux 診断コンテナ (kubectl, trivy, kube-bench, nmap, python, go)
+├── kind/
+│   ├── kind-config.yaml      # kind クラスタ設定（3ノード、デフォルト CNI 無効化）
+│   └── calico/               # NetworkPolicy 対応 CNI (Calico) の導入設定
 ├── manifests/
-│   ├── vulnerable-lab/     # 意図的に脆弱な構成を再現する Namespace/マニフェスト
-│   └── policies/           # NetworkPolicy, Pod Security 設定例
-├── scripts/                # RBAC 確認・診断自動化スクリプト（Python/Go）
-└── reports/                # 診断結果の出力先（JSON/Markdown）
+│   ├── vulnerable-lab/       # 意図的に脆弱な構成を再現する Namespace/マニフェスト
+│   ├── policies/             # NetworkPolicy, Pod Security 設定例（比較用の安全な構成）
+│   └── audits/               # kube-bench 実行用 Job
+├── scripts/                  # RBAC / Pod Security / Network 監査スクリプト（Python）
+└── reports/                  # 診断結果の出力先（JSON/Markdown、gitignore 対象）
 ```
+
+詳細な使い方は [README.md](README.md) を参照。
 
 ## エージェントへの指示
 
