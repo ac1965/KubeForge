@@ -25,15 +25,24 @@ HOST_ESCAPE_CAPABILITIES = {"SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "SYS_RAWIO"
 SEVERITIES_OF_INTEREST = {"CRITICAL", "HIGH"}
 
 
-def scan_image(image: str) -> dict:
+def scan_image(image: str) -> tuple[dict, bool]:
+    """(scan結果, スキャン成功したか) を返す。
+
+    trivy がイメージを解決できない場合 (ローカルのみに存在しレジストリに
+    push されていないイメージなど) は非ゼロ終了・JSON 出力なしで失敗する。
+    これを「脆弱性 0 件」と区別せずに握りつぶすと、スキャンできていない
+    ことに気づけないまま「安全」という誤った結論になってしまう。
+    """
     result = subprocess.run(
         ["trivy", "image", "--quiet", "--format", "json", image],
         capture_output=True, text=True,
     )
+    if result.returncode != 0:
+        return {}, False
     try:
-        return json.loads(result.stdout)
+        return json.loads(result.stdout), True
     except json.JSONDecodeError:
-        return {}
+        return {}, False
 
 
 def count_severities(scan: dict) -> dict:
@@ -72,9 +81,12 @@ def pod_escape_factors(pod: dict, container: dict) -> list[str]:
     return factors
 
 
-def find_image_chains(pods: list[dict]) -> list[dict]:
+def find_image_chains(pods: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(chains, scan_failures) を返す。scan_failures はスキャンし忘れではなく、
+    トリアージが必要な「未確認」の脱出可能 Pod として明示的に報告する。"""
     chains = []
-    scan_cache: dict[str, dict] = {}
+    scan_failures = []
+    scan_cache: dict[str, tuple[dict, bool]] = {}
 
     for pod in pods:
         namespace = pod["metadata"]["namespace"]
@@ -89,8 +101,25 @@ def find_image_chains(pods: list[dict]) -> list[dict]:
 
             image = container["image"]
             if image not in scan_cache:
-                scan_cache[image] = count_severities(scan_image(image))
-            counts = scan_cache[image]
+                scan_result, ok = scan_image(image)
+                scan_cache[image] = (count_severities(scan_result) if ok else {}, ok)
+            counts, ok = scan_cache[image]
+
+            if not ok:
+                scan_failures.append({
+                    "namespace": namespace,
+                    "pod": name,
+                    "container": container["name"],
+                    "image": image,
+                    "escape_factors": escape_factors,
+                    "detail": (
+                        "Trivy がこのイメージをスキャンできませんでした (レジストリに存在しない "
+                        "ローカル限定イメージである可能性があります)。ノード脱出手段を持つ Pod のため、"
+                        "手動でイメージの脆弱性を確認してください。"
+                    ),
+                })
+                continue
+
             if counts["CRITICAL"] == 0 and counts["HIGH"] == 0:
                 continue
 
@@ -109,16 +138,16 @@ def find_image_chains(pods: list[dict]) -> list[dict]:
                 ),
             })
 
-    return chains
+    return chains, scan_failures
 
 
 def main() -> None:
     json_out, md_out = sys.argv[1], sys.argv[2]
 
     pods = get("pods", all_namespaces=True)["items"]
-    chains = find_image_chains(pods)
+    chains, scan_failures = find_image_chains(pods)
 
-    write_json(json_out, {"image_breakout_chains": chains})
+    write_json(json_out, {"image_breakout_chains": chains, "scan_failures": scan_failures})
 
     lines = [
         "# Image Vulnerability Chain Audit",
@@ -132,8 +161,23 @@ def main() -> None:
         lines.append(
             f"- **{c['namespace']}/{c['pod']} (container/{c['container']}, image {c['image']})**: {c['detail']}"
         )
+
+    lines += [
+        "",
+        "## スキャン失敗 (未確認のまま残っているノード脱出可能 Pod)",
+        "",
+        f"検出件数: {len(scan_failures)}",
+        "",
+    ]
+    if not scan_failures:
+        lines.append("問題は検出されませんでした。")
+    for f in scan_failures:
+        lines.append(
+            f"- **{f['namespace']}/{f['pod']} (container/{f['container']}, image {f['image']})**: {f['detail']}"
+        )
+
     write_markdown(md_out, lines)
-    print(f"Image audit: {len(chains)} chain(s) found")
+    print(f"Image audit: {len(chains)} chain(s) found, {len(scan_failures)} scan failure(s)")
 
 
 if __name__ == "__main__":
