@@ -3,7 +3,7 @@ CLUSTER_NAME := kubeforge-lab
 CALICO_VERSION := v3.28.0
 KUBECONFIG_INTERNAL := kind/kubeconfig-internal.yaml
 
-.PHONY: build cluster-up cluster-down lab-deploy policies-deploy audit kube-bench shell clean
+.PHONY: build cluster-up cluster-down lab-deploy policies-deploy load-image audit kube-bench shell clean
 
 ## Arch Linux 診断コンテナをビルドする
 build:
@@ -41,17 +41,34 @@ lab-deploy:
 policies-deploy:
 	kubectl apply -f manifests/policies/
 
+## 診断コンテナイメージ (ローカルビルドのみでレジストリには公開していない) を
+## kind ノードに読み込む。manifests/audits/kube-bench-job.yaml がこのイメージを
+## 使う (kube-bench を同梱しているため) ので、kube-bench 実行前に必要。
+## `kind load docker-image` は BuildKit の attestation manifest 付きイメージで
+## 失敗することがあるため (multi-platform 対応の副作用)、ctr import へ確実に
+## フォールバックする。
+load-image:
+	kind load docker-image $(IMAGE_NAME) --name $(CLUSTER_NAME) || ( \
+		set -e; \
+		tmp=$$(mktemp); \
+		docker save $(IMAGE_NAME) -o "$$tmp"; \
+		for node in $$(kind get nodes --name $(CLUSTER_NAME)); do \
+			docker exec -i "$$node" ctr --namespace=k8s.io images import - < "$$tmp"; \
+		done; \
+		rm -f "$$tmp" \
+	)
+
 ## kube-bench (CIS Benchmark) を control-plane ノード上の Job として単体実行する
 ## (audit ターゲットの run_all.sh 経由でも自動実行されるが、素早く単体で
 ## 確認したいときのショートカットとして残している)
-kube-bench:
+kube-bench: load-image
 	kubectl apply -f manifests/audits/kube-bench-job.yaml
 	kubectl wait --for=condition=complete job/kube-bench --timeout=120s
 	kubectl logs job/kube-bench
 
 ## 診断コンテナを kind クラスタの Docker ネットワークに接続して全監査を実行する
 ## (RBAC / Pod Security / Network / kube-bench / Trivy イメージスキャン)
-audit:
+audit: load-image
 	docker run --rm \
 		--network kind \
 		-v $(PWD)/$(KUBECONFIG_INTERNAL):/home/forger/.kube/config:ro \

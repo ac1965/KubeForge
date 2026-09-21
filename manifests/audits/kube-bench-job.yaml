@@ -1,6 +1,14 @@
 # CIS Kubernetes Benchmark を control-plane ノード上で実行する Job。
 # kube-bench 公式ジョブ定義 (job-node.yaml 相当) を kind 向けに調整したもの。
 # 実行後は `kubectl logs job/kube-bench` で結果を確認する。
+#
+# イメージは docker.io/aquasec/kube-bench ではなく、この診断コンテナ自身
+# (kubeforge-toolbox, ソースから最新 go でビルドした kube-bench を同梱) を使う。
+# 公式のビルド済みイメージはリリース時点の Go バージョンが固定されており、
+# 埋め込まれた stdlib 由来の HIGH 脆弱性を Trivy が検出するため
+# (docker/Dockerfile のコメント参照)。ローカルビルドのイメージなので、
+# 実行前に `kind load docker-image kubeforge-toolbox --name <cluster>`
+# (または Makefile の該当ターゲット) でノードに読み込ませておくこと。
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -19,8 +27,15 @@ spec:
           effect: NoSchedule
       containers:
         - name: kube-bench
-          image: docker.io/aquasec/kube-bench:v0.16.0
-          command: ["kube-bench", "run", "--targets", "master,node,etcd,policies"]
+          image: kubeforge-toolbox:latest
+          imagePullPolicy: IfNotPresent
+          # イメージの ENTRYPOINT (/bin/bash) を上書きし、同梱の kube-bench を直接実行する。
+          command: ["kube-bench"]
+          args: ["run", "--targets", "master,node,etcd,policies", "--config-dir", "/opt/kube-bench/cfg"]
+          securityContext:
+            # kube-bench は /etc/kubernetes/pki 等の root 所有ファイルを
+            # 読む必要があるため、イメージのデフォルトユーザー (forger) を上書きする。
+            runAsUser: 0
           volumeMounts:
             - name: var-lib-etcd
               mountPath: /var/lib/etcd

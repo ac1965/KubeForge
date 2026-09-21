@@ -56,6 +56,12 @@ RUN pacman -Syu --noconfirm --disable-sandbox --needed \
       && pacman -Scc --noconfirm \
       && rm -rf /var/cache/pacman/pkg/*
 
+# libcap (base-devel の依存) が同梱する captree は本イメージでは未使用の
+# Go 製ツールで、libcap パッケージのリリース当時の古い Go stdlib が
+# 埋め込まれたままになっており Trivy スキャンで HIGH 脆弱性として検出される。
+# 使わないバイナリなので削除する。
+RUN rm -f /usr/bin/captree
+
 # Trivy (image / filesystem vulnerability scanner) — installed from upstream
 # release tarballs because it is not in the official Arch repos.
 RUN set -eux; \
@@ -69,12 +75,27 @@ RUN set -eux; \
     tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy; \
     rm /tmp/trivy.tar.gz
 
-# kube-bench (CIS Kubernetes Benchmark auditor)
+# kube-bench (CIS Kubernetes Benchmark auditor) — ソースからビルドする。
+# 公式のビルド済みバイナリ (GitHub Releases / Docker Hub イメージ) は
+# リリース時点の Go バージョンのまま固定されており、Trivy でスキャンすると
+# 埋め込まれた Go 標準ライブラリ由来の HIGH 脆弱性が複数検出される
+# (コンテナ OS 側をいくら新しくしても、コンパイル済みバイナリの中身は
+# 変わらないため解消しない)。Arch Linux の最新 go でビルドし直すことで
+# この問題を解消する。cfg/ (CIS ベンチマーク定義) はビルド済みバイナリには
+# 含まれないため、ソース tarball から別途取り出して同梱する。
 RUN set -eux; \
-    curl -sSL -o /tmp/kube-bench.tar.gz \
-      "https://github.com/aquasecurity/kube-bench/releases/download/v${KUBE_BENCH_VERSION}/kube-bench_${KUBE_BENCH_VERSION}_linux_${TARGETARCH}.tar.gz"; \
-    tar -xzf /tmp/kube-bench.tar.gz -C /usr/local/bin kube-bench; \
-    rm /tmp/kube-bench.tar.gz
+    curl -sSL -o /tmp/kube-bench-src.tar.gz \
+      "https://github.com/aquasecurity/kube-bench/archive/refs/tags/v${KUBE_BENCH_VERSION}.tar.gz"; \
+    mkdir -p /tmp/kube-bench-src; \
+    tar -xzf /tmp/kube-bench-src.tar.gz -C /tmp/kube-bench-src --strip-components=1; \
+    cd /tmp/kube-bench-src; \
+    CGO_ENABLED=0 go build \
+      -ldflags "-X github.com/aquasecurity/kube-bench/cmd.KubeBenchVersion=${KUBE_BENCH_VERSION}" \
+      -o /usr/local/bin/kube-bench .; \
+    mkdir -p /opt/kube-bench; \
+    cp -r cfg /opt/kube-bench/cfg; \
+    cd /; \
+    rm -rf /tmp/kube-bench-src /tmp/kube-bench-src.tar.gz "$(go env GOCACHE)" "$(go env GOMODCACHE)"
 
 RUN useradd -m -s /bin/bash forger
 WORKDIR /workspace
