@@ -9,11 +9,12 @@ Arch Linux ベースの診断コンテナ + kind ラボ環境。詳しい設計�
 ## できること
 
 - **再現可能な脆弱 Kubernetes ラボの構築**: `kind` + Calico で 3 ノードクラスタを
-  一発で立て、`manifests/vulnerable-lab/`（意図的に脆弱な RBAC・Pod 設定）と
+  一発で立て、`manifests/vulnerable-lab/`（意図的に脆弱な RBAC・Pod・NetworkPolicy 設定）と
   `manifests/policies/`（Pod Security Standards + NetworkPolicy の良い例）を
   並べてデプロイし、Before/After を比較できる。
 - **ワンコマンドでの多面的セキュリティ監査**: `make audit` 一発で以下がすべて
-  自動実行され、`reports/<timestamp>/` に JSON + Markdown で残る。
+  自動実行され、`reports/<timestamp>/` に JSON + Markdown で残る。個別の所見だけでなく
+  実際に悪用可能な**攻撃チェーン**（下記「診断内容」参照）も検出する。
   - RBAC: `cluster-admin` バインドやワイルドカード権限の検出
   - Pod Security: privileged・hostNetwork/PID/IPC・root 実行・hostPath マウントなど
   - ネットワーク: NetworkPolicy が存在しない Namespace の洗い出し
@@ -101,7 +102,7 @@ KubeForge/
 │   ├── kind-config.yaml      # 3ノード kind クラスタ（デフォルト CNI 無効化、CIS Benchmark 是正パッチ込み）
 │   └── calico/               # NetworkPolicy 対応 CNI (Calico) の導入設定
 ├── manifests/
-│   ├── vulnerable-lab/       # 意図的に脆弱な RBAC / Pod 設定（検出対象）
+│   ├── vulnerable-lab/       # 意図的に脆弱な RBAC / Pod / NetworkPolicy 設定（検出対象）
 │   ├── policies/             # Pod Security Standards + NetworkPolicy の良い例
 │   └── audits/               # kube-bench 実行用 Job
 ├── scripts/                  # RBAC / Pod Security / Network / イメージ 監査スクリプト (Python)
