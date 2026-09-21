@@ -46,7 +46,7 @@ KubeForge/
 ├── Makefile                  # ビルド/クラスタ/診断の一連の操作
 ├── docker/Dockerfile         # Arch Linux 診断コンテナ (kubectl, trivy, kube-bench, nmap, python, go)
 ├── kind/
-│   ├── kind-config.yaml      # 3ノード kind クラスタ（デフォルト CNI 無効化）
+│   ├── kind-config.yaml      # 3ノード kind クラスタ（デフォルト CNI 無効化、CIS Benchmark 是正パッチ込み）
 │   └── calico/               # NetworkPolicy 対応 CNI (Calico) の導入設定
 ├── manifests/
 │   ├── vulnerable-lab/       # 意図的に脆弱な RBAC / Pod 設定（検出対象）
@@ -65,6 +65,13 @@ KubeForge/
 | ネットワーク | `scripts/network_audit.py` | NetworkPolicy が存在しない Namespace |
 | イメージ | `scripts/run_all.sh` 内の Trivy 呼び出し | クラスタ上で稼働中イメージの既知脆弱性 |
 | ノード設定 | `manifests/audits/kube-bench-job.yaml` | CIS Kubernetes Benchmark |
+
+kube-bench の FAIL のうち、apiserver/controller-manager/scheduler の起動フラグで
+是正できるもの(profiling 無効化、監査ログ設定、ServiceAccount トークン長期化の禁止)は
+`kind/kind-config.yaml` の `kubeadmConfigPatches` で対応済み（FAIL 12件 → 4件）。
+残る4件はファイル権限/所有者系（kind ノードコンテナの使い捨てファイルシステムに起因し
+是正不可）と、`--kubelet-certificate-authority`（有効化すると kind の自己署名
+kubelet 証明書の IP SANs 不足により `kubectl logs`/`exec` が失敗するため意図的に対象外）。
 
 ## 注意事項
 
