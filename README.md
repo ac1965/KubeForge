@@ -13,8 +13,8 @@ Arch Linux ベースの診断コンテナ + kind ラボ環境。詳しい設計�
   `manifests/policies/`（Pod Security Standards + NetworkPolicy の良い例）を
   並べてデプロイし、Before/After を比較できる。
 - **ワンコマンドでの多面的セキュリティ監査**: `make audit` 一発で以下がすべて
-  自動実行され、`reports/<timestamp>/` に JSON + Markdown で残る。個別の所見だけでなく
-  実際に悪用可能な**攻撃チェーン**（下記「診断内容」参照）も検出する。
+  自動実行され、`reports/<timestamp>/` に JSON + Markdown + HTML（下記参照）で残る。
+  個別の所見だけでなく実際に悪用可能な**攻撃チェーン**（下記「診断内容」参照）も検出する。
   - RBAC: `cluster-admin` バインドやワイルドカード権限の検出
   - Pod Security: privileged・hostNetwork/PID/IPC・root 実行・hostPath マウントなど
   - ネットワーク: NetworkPolicy が存在しない Namespace の洗い出し
