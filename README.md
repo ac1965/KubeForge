@@ -72,7 +72,9 @@ make cluster-down
 ```
 
 `make audit` の結果は `reports/<timestamp>/` 配下に JSON と Markdown で出力される
-(`summary.md` が全体のまとめ)。
+(`summary.md` が全体のまとめ)。加えて `dashboard.html` — KPI サマリー・攻撃チェーンの
+カード表示・namespace/ノードのトポロジー図をまとめた HTML ダッシュボードも
+毎回自動生成される。ブラウザで開くだけで確認できる。
 
 `scripts/` と `manifests/audits/` は `docker/Dockerfile` の `COPY` でイメージに
 焼き込まれる（実行時にマウントはしない）ため、これらを編集したら
@@ -105,7 +107,7 @@ KubeForge/
 │   ├── vulnerable-lab/       # 意図的に脆弱な RBAC / Pod / NetworkPolicy 設定（検出対象）
 │   ├── policies/             # Pod Security Standards + NetworkPolicy の良い例
 │   └── audits/               # kube-bench 実行用 Job
-├── scripts/                  # RBAC / Pod Security / Network / イメージ 監査スクリプト (Python)
+├── scripts/                  # RBAC / Pod Security / Network / イメージ 監査スクリプト + HTML ダッシュボード生成 (Python)
 └── reports/                  # 診断結果の出力先（gitignore 対象、.gitkeep のみ管理）
 ```
 

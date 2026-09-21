@@ -48,5 +48,8 @@ kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.con
 echo "[*] Image vulnerability chain audit"
 python3 scripts/image_audit.py "$OUT/image_audit.json" "$OUT/image_audit.md"
 
+echo "[*] HTML dashboard"
+python3 scripts/generate_dashboard.py "$OUT" "$OUT/dashboard.html"
+
 cat "$OUT"/*.md > "$OUT/summary.md"
 echo "[*] Done: $OUT"
