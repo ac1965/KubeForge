@@ -1,0 +1,16 @@
+# ネットワーク監査検証用: NetworkPolicy が「存在する」だけで安全だと誤解しがちな
+# 典型例。Ingress の policyType を宣言し、ルールも 1 つ定義されているため
+# `kubectl get networkpolicy` を見ただけでは保護されているように見えるが、
+# そのルールに `from` が無いため実質的に全ての送信元からの通信を許可しており、
+# NetworkPolicy が無い場合と同じ状態になっている。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fake-restrictive
+  namespace: vulnerable-lab
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - {}
