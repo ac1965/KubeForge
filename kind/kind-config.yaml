@@ -16,7 +16,7 @@ nodes:
 # 監査ログ未設定, ServiceAccount トークン長期化) を kubeadm の静的 Pod
 # フラグレベルで是正する。ファイル権限/所有者系の FAIL は kind ノード
 # コンテナの使い捨てファイルシステムに起因するため対象外
-# (manifests/audits/kube-bench-job.yaml 実行結果を参照)。
+# (PownForge の `kube-bench` プラグイン実行結果を参照)。
 #
 # 1.2.5 (--kubelet-certificate-authority) はあえて含めていない。有効化すると
 # apiserver→kubelet 間の TLS 検証が厳格化されるが、kind が自動生成する

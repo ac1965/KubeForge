@@ -1,13 +1,8 @@
-IMAGE_NAME := kubeforge-toolbox
 CLUSTER_NAME := kubeforge-lab
 CALICO_VERSION := v3.28.0
 KUBECONFIG_INTERNAL := kind/kubeconfig-internal.yaml
 
-.PHONY: build cluster-up cluster-down lab-deploy policies-deploy load-image audit kube-bench shell clean
-
-## Arch Linux 診断コンテナをビルドする
-build:
-	docker build -t $(IMAGE_NAME) -f docker/Dockerfile .
+.PHONY: cluster-up cluster-down lab-deploy policies-deploy clean
 
 ## kind クラスタを作成し、NetworkPolicy 対応のため Calico を導入する
 cluster-up:
@@ -26,6 +21,10 @@ cluster-up:
 	kubectl wait --for=create namespace/calico-system --timeout=120s
 	kubectl wait --for=create -n calico-system deployment/calico-kube-controllers --timeout=120s
 	kubectl -n calico-system rollout status deployment/calico-kube-controllers --timeout=180s
+	# PownForge の kubernetes/kubernetes-audit/kube-bench プラグインが
+	# pownforge-lab ネットワーク経由でこのクラスタに到達するための内部向け
+	# kubeconfig (server が Docker ネットワーク上のコンテナ名になる)。
+	# 診断・監査・可視化は PownForge リポジトリ側で行う (README 参照)。
 	kind get kubeconfig --name $(CLUSTER_NAME) --internal > $(KUBECONFIG_INTERNAL)
 
 ## kind クラスタを削除する
@@ -41,48 +40,6 @@ lab-deploy:
 policies-deploy:
 	kubectl apply -f manifests/policies/
 
-## 診断コンテナイメージ (ローカルビルドのみでレジストリには公開していない) を
-## kind ノードに読み込む。manifests/audits/kube-bench-job.yaml がこのイメージを
-## 使う (kube-bench を同梱しているため) ので、kube-bench 実行前に必要。
-## `kind load docker-image` は BuildKit の attestation manifest 付きイメージで
-## 失敗することがあるため (multi-platform 対応の副作用)、ctr import へ確実に
-## フォールバックする。
-load-image:
-	kind load docker-image $(IMAGE_NAME) --name $(CLUSTER_NAME) || ( \
-		set -e; \
-		tmp=$$(mktemp); \
-		docker save $(IMAGE_NAME) -o "$$tmp"; \
-		for node in $$(kind get nodes --name $(CLUSTER_NAME)); do \
-			docker exec -i "$$node" ctr --namespace=k8s.io images import - < "$$tmp"; \
-		done; \
-		rm -f "$$tmp" \
-	)
-
-## kube-bench (CIS Benchmark) を control-plane ノード上の Job として単体実行する
-## (audit ターゲットの run_all.sh 経由でも自動実行されるが、素早く単体で
-## 確認したいときのショートカットとして残している)
-kube-bench: load-image
-	kubectl apply -f manifests/audits/kube-bench-job.yaml
-	kubectl wait --for=condition=complete job/kube-bench --timeout=120s
-	kubectl logs job/kube-bench
-
-## 診断コンテナを kind クラスタの Docker ネットワークに接続して全監査を実行する
-## (RBAC / Pod Security / Network / kube-bench / Trivy イメージスキャン)
-audit: load-image
-	docker run --rm \
-		--network kind \
-		-v $(PWD)/$(KUBECONFIG_INTERNAL):/home/forger/.kube/config:ro \
-		-v $(PWD)/reports:/workspace/reports \
-		$(IMAGE_NAME) -c "bash scripts/run_all.sh"
-
-## 診断コンテナに対話シェルで入る（手動でツールを試す用）
-shell:
-	docker run --rm -it \
-		--network kind \
-		-v $(PWD)/$(KUBECONFIG_INTERNAL):/home/forger/.kube/config:ro \
-		-v $(PWD)/reports:/workspace/reports \
-		$(IMAGE_NAME)
-
 ## ローカルの生成物を削除する
 clean:
-	rm -rf reports/*/ kind/kubeconfig-internal.yaml
+	rm -f kind/kubeconfig-internal.yaml

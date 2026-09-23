@@ -1,7 +1,3 @@
-# diagnostic output
-/reports/*/
-!/reports/.gitkeep
-
 # generated kubeconfigs
 /kind/kubeconfig-internal.yaml
 *.kubeconfig

@@ -4,7 +4,18 @@
 
 ## プロジェクト概要
 
-**KubeForge** は、Kubernetes クラスタのセキュリティ診断（構成ミス・権限設定・ネットワーク分離・コンテナセキュリティの検証）に特化した、Arch Linux ベースの Docker 環境です。単なるツール寄せ集めのペネトレーションテスト用イメージではなく、Kubernetes 特有の攻撃面（RBAC、Pod Security、NetworkPolicy、コンテナ/イメージ）を体系的に検証できるラボ環境として設計します。
+**KubeForge** は、意図的に脆弱な Kubernetes クラスタ（RBAC・Pod Security・
+NetworkPolicy の設定ミスを再現）を `kind` 上に**再現可能な形で構築するためだけ**
+の、スコープを絞ったラボ環境です。
+
+以前は Arch Linux ベースの診断コンテナ（kubectl/trivy/kube-bench/nmap 同梱）と、
+RBAC/Pod Security/Network/イメージの多面的監査スクリプト・攻撃チェーン検出・
+HTML ダッシュボード生成を同梱していましたが、**それらはロジックごと
+[PownForge](https://github.com/ac1965/PownForge) リポジトリへ移植し、このリポジトリ
+からは削除しました**（`kubernetes`/`kubernetes-audit`/`kube-bench` プラグイン、
+`attack-session report --format html`。詳細は PownForge の `docs/handbook.md`
+§6「プラグイン」・§13「証跡とレポート」参照）。このリポジトリに新しい診断・
+監査・可視化ロジックを追加しないこと — その種の変更は PownForge 側で行う。
 
 対象読者: 認可されたセキュリティ診断・CTF・学習目的でこの環境を使う人。**実運用クラスタへの適用は、必ず正当な権限と許可がある場合に限る。**
 
@@ -13,27 +24,21 @@
 ```text
 macOS (Apple Silicon)
 └─ Docker Desktop
-   └─ Kubernetes Lab
-      ├─ Arch Pentest Container（診断コンテナ）
-      │   ├─ kubectl
-      │   ├─ kube-bench
-      │   ├─ Trivy
-      │   ├─ Nmap
-      │   └─ Python / Go
-      │        │  Kubernetes API 経由でアクセス
-      │        ▼
-      └─ Kubernetes Cluster（kind 上に構築）
-          ├─ Control Plane
-          ├─ Worker Nodes
-          └─ Test Namespaces（RBAC / NetworkPolicy 検証用）
+   ├─ Kubernetes Lab (kind上に構築)
+   │   ├─ Control Plane
+   │   ├─ Worker Nodes
+   │   └─ Test Namespaces (RBAC / NetworkPolicy 検証用)
+   │
+   └─ PownForge (別リポジトリ、pownforge-lab / kind の両Dockerネットワークに
+       接続したコンテナ) が Kubernetes API 経由で診断・監査・可視化を行う
 ```
 
 設計上のポイント:
 
-- 診断コンテナとクラスタを分離し、Kubernetes API へのアクセス権限を限定する
+- クラスタの「構築」と「診断」を別リポジトリに分離し、それぞれの責務を
+  はっきりさせる (KubeForge = ラボ構築、PownForge = 診断・監査・可視化)
 - RBAC・NetworkPolicy を実際に検証できる構成にする（NetworkPolicy はリソースを作るだけでは機能せず、対応する CNI が必要）
 - 脆弱な設定をあえて再現するテスト用 Namespace を用意する
-- 診断結果は JSON / Markdown で保存する
 
 ## 採用構成（決定事項）
 
@@ -43,25 +48,23 @@ macOS (Apple Silicon)
 | --- | --- |
 | ① クラスタ | A. kind（Docker 上に構築） |
 | ② 診断対象 | A. 自分で構築した脆弱な Kubernetes ラボ（再現可能なラボを最優先） |
-| ③ ディストリビューション方向性 | D. Kubernetes ペンテスター向け独自ディストリビューション（Arch Linux ベース） |
 
-まず再現可能な脆弱ラボを構築し、RBAC・Pod Security・NetworkPolicy の検証をそれぞれ分離して実施できる状態にしてから、実運用クラスタへの適用を検討する。
+まず再現可能な脆弱ラボを構築し、RBAC・Pod Security・NetworkPolicy の検証を
+それぞれ分離して実施できる状態にする。診断・監査自体は PownForge 側で行う。
 
 ## 技術スタック
 
 | 機能 | 採用候補 |
 | --- | --- |
-| 診断 OS | Arch Linux |
 | クラスタ | kind |
 | CLI | kubectl |
-| イメージ診断 | Trivy |
-| Kubernetes 設定監査 | kube-bench |
-| RBAC 確認 | kubectl / 専用スクリプト |
-| ネットワーク | NetworkPolicy 対応 CNI |
+| ネットワーク | NetworkPolicy 対応 CNI (Calico) |
 | ポリシー | Pod Security Admission |
-| 出力 | JSON / Markdown / HTML（ダッシュボード） |
 
-## 検証するセキュリティ項目
+## このラボが再現する設定ミスのカテゴリ
+
+`manifests/vulnerable-lab/`・`manifests/policies/` が再現/対比する、PownForge
+側の `kubernetes`/`kubernetes-audit` プラグインが検出対象とするカテゴリ。
 
 ### A. RBAC
 - 過剰な権限を持つ ServiceAccount
@@ -74,20 +77,17 @@ macOS (Apple Silicon)
 - hostNetwork / hostPID / hostIPC
 - root 実行
 - Linux capabilities
-- Seccomp 設定
-- Pod Security Standards の 3 レベル（Privileged / Baseline / Restricted）に基づく評価
+- Pod Security Standards の 3 レベル（Privileged / Baseline / Restricted）
 
 ### C. ネットワーク
 - Namespace 間通信
 - 不要な Ingress / Egress
 - NetworkPolicy の有無
-- 外部接続の制御
 
 ### D. コンテナ・イメージ
-- 脆弱性を含むイメージ（Trivy）
+- 脆弱性を含むイメージ（PownForge の `kubernetes`/`kubernetes-audit` プラグインが Trivy 経由で検出）
 - root 実行
 - 不要な Linux capabilities
-- イメージの出所・タグ管理
 
 ## リポジトリ構成
 
@@ -95,128 +95,53 @@ macOS (Apple Silicon)
 KubeForge/
 ├── AGENTS.md
 ├── README.md                 # クイックスタート
-├── Makefile                  # build / cluster-up / lab-deploy / audit などの操作
-├── docker/Dockerfile         # Arch Linux 診断コンテナ (kubectl, trivy, kube-bench, nmap, python, go)
-│                             # amd64/arm64 ともネイティブビルド対応（マルチステージ、後述）
+├── Makefile                  # cluster-up / cluster-down / lab-deploy / policies-deploy / clean
 ├── kind/
-│   ├── kind-config.yaml      # kind クラスタ設定（3ノード、デフォルト CNI 無効化）
+│   ├── kind-config.yaml      # kind クラスタ設定（3ノード、デフォルト CNI 無効化、CIS Benchmark 是正パッチ込み）
 │   └── calico/               # NetworkPolicy 対応 CNI (Calico) の導入設定
-├── manifests/
-│   ├── vulnerable-lab/       # 意図的に脆弱な構成を再現する Namespace/マニフェスト
-│   ├── policies/             # NetworkPolicy, Pod Security 設定例（比較用の安全な構成）
-│   └── audits/               # kube-bench 実行用 Job
-├── scripts/                  # RBAC / Pod Security / Network / Image 監査スクリプト（Python、攻撃チェーン検出込み）
-│                             # + generate_dashboard.py（HTML ダッシュボード生成）
-└── reports/                  # 診断結果の出力先（JSON/Markdown/dashboard.html、gitignore 対象）
+└── manifests/
+    ├── vulnerable-lab/       # 意図的に脆弱な Namespace/マニフェスト（PownForge の診断対象）
+    └── policies/             # Pod Security Standards + NetworkPolicy の良い例（比較用）
 ```
 
 詳細な使い方は [README.md](README.md) を参照。
 
-## 診断コンテナのマルチアーキテクチャ対応
+## Hardening 施策の効果測定について
 
-`docker/Dockerfile` はマルチステージ構成で amd64 / arm64 双方をネイティブビルドする
-（`docker build`、buildx とも `--platform` 指定なしでホストのアーキテクチャに
-合わせてビルドされる）。
+`kind/kind-config.yaml` の `kubeadmConfigPatches` で apiserver/controller-manager/
+scheduler の起動フラグを変更し、クラスタを作り直すところまではこのリポジトリの
+責務。変更前後で kube-bench の PASS/FAIL/WARN 件数がどう変わったかを**測定する**
+のは PownForge 側の `kube-bench` プラグイン(`pownforge scan kube-bench --target
+<name>` を2回実行して比較する)の責務。
 
-- amd64: 公式の `archlinux:latest`（Docker Hub, `docker.io/library/archlinux`）をそのまま使用。
-- arm64: 公式 archlinux イメージは amd64 のみ提供のため、Arch Linux ARM
-  (ALARM, archlinuxarm.org — Arch Linux の姉妹プロジェクトで ARM 移植版) の
-  rootfs (`http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz`)
-  を取得して `FROM scratch` に展開したものを使用。ALARM は独自の pacman 署名鍵を
-  持つため `pacman-key --init && pacman-key --populate archlinuxarm` を実行してから
-  パッケージを導入する。
+## 攻撃チェーン検出・HTML ダッシュボードについて
 
-Apple Silicon 上で QEMU エミュレーションを避けてネイティブ arm64 ビルドにするための
-選択であり、`menci/archlinuxarm` のような非公式イメージより ALARM 公式配布物を
-優先している（セキュリティ診断ツールというプロジェクトの性質上、サプライチェーンの
-出所をできるだけ公式なものに揃えるため）。
-
-## 攻撃チェーン検出の設計方針
-
-`scripts/` 配下の4つの監査スクリプト（RBAC / Pod Security / Network / Image）は、
-いずれも「個別の所見を並べるだけ」で終わらせず、**単体では見過ごされがちな所見同士
-が組み合わさると実際に悪用できてしまう経路（攻撃チェーン）** を検出する関数を持つ。
-これは単なる網羅性向上ではなく、実際に kind クラスタ上で手動 PoC を行った上で
-「この組み合わせは本当に悪用できる」と確認してから実装した検出ロジックである。
-
-| スクリプト | チェーン検出関数 | 検出するチェーン |
-| --- | --- | --- |
-| `rbac_audit.py` | `find_token_escalation_paths` | ある namespace 内で `serviceaccounts/token` の create 権限を持つ ServiceAccount が、同じ namespace 内の cluster-admin 付き ServiceAccount へ `kubectl create token` でなりすませる（RoleBinding は namespace スコープに見えるが実質的に無意味化する） |
-| `pod_security_audit.py` | `find_breakout_chains` | privileged/特権 capability + hostPath マウント（ホストのファイルシステムに直接アクセス）、または + hostPID（`/proc/1/root` 経由でホストプロセスへ侵入）によるノード乗っ取り |
-| `network_audit.py` | `find_permissive_rules` / `find_hostnetwork_bypass` | NetworkPolicy が存在してもルールに `from`/`to` が無ければ実質全許可、hostNetwork の Pod は NetworkPolicy の適用対象外（namespace に NetworkPolicy があっても効かない） |
-| `image_audit.py` | `find_image_chains` | Trivy が検出した CRITICAL/HIGH 脆弱性を持つイメージが、`pod_security_audit.py` と同じ判定基準でノード脱出手段（privileged/hostPath/hostNetwork 等）も持つ Pod で稼働している |
-
-**繰り返し踏んだ落とし穴**: これらのチェーン検出は `kube-system` / `calico-system` /
-`calico-apiserver` / `tigera-operator` といった system namespace の正当な
-DaemonSet（CNI/CSI 等）や、`system:masters` のような組み込みの Group/User を
-誤検出しやすい（privileged + hostPath は CNI にとって正当な構成であり、
-`system:masters` は最初から cluster-admin なので「昇格」ではない）。
-このセッションで RBAC・Pod Security・Network の3つとも同じノイズに一度は
-引っかかった。**新しいチェーン検出を追加するときは、最初から `EXEMPT_NAMESPACES`
-（各スクリプトで定義済み）での除外、および RBAC の場合は subject を
-`kind: ServiceAccount` に絞る、といったフィルタを組み込むこと。**
-
-**検証手順**: 新しいチェーン検出を追加する際は次の3段階を踏む。
-1. `manifests/vulnerable-lab/` の実際の構成を模したモックデータで単体テスト
-   （検出されるべきケースと、されるべきでないケース＝false positive 候補の両方）
-2. kind クラスタを実際に構築し、対象マニフェストをデプロイしてスクリプトを
-   ライブ実行し、期待件数と一致するか確認
-3. 可能であれば `kubectl exec` / `kubectl create token` / 別 namespace からの
-   `curl` などで実際に攻撃を成立させ、検出が机上の空論でないことを実証する
-
-## HTML ダッシュボード
-
-`scripts/generate_dashboard.py` は `run_all.sh` の最終ステップとして各監査の
-JSON (`rbac_audit.json` / `pod_security_audit.json` / `network_audit.json` /
-`image_audit.json`) と `kube_bench.log` を読み込み、`reports/<timestamp>/dashboard.html`
-を生成する。`make audit` を実行するたびに自動で作られる。
-
-**データ駆動が原則**: チェーンの内容・件数をハードコードしない。各監査スクリプトの
-JSON にある人間可読な `detail` 文字列をそのままカードに表示し、トポロジー図
-（namespace / ノードの配置と侵害経路）も `kubectl get pods` からその場で取得した
-実際のスケジュール先ノードを使ってレイアウトする。そのため vulnerable-lab の
-内容が将来変わっても (Pod が増減する、別のノードにスケジュールされる等)
-そのまま正しく反映される。RBAC のトークン昇格は namespace 内の権限関係であり
-ネットワーク境界を越える話ではないため、トポロジー図には含めず専用のカードのみで示す。
-
-**実装時に踏んだ落とし穴** (今後 HTML を生成するスクリプトを書く/直す際の注意):
-- `Path.write_text()` に `encoding="utf-8"` を指定し忘れ、環境によって日本語が
-  文字化けした。生成した HTML は必ず `encoding="utf-8"` で書き出し、
-  `<meta charset="utf-8">` も入れること。
-- チェーンの detail に `<br>` を含めて改行させたい箇所で、カード組み立て関数
-  (`chain_card`) が受け取った文字列を再度 `esc()` してしまい、`<br>` がタグで
-  はなく文字列として表示された。「呼び出し側が esc 済みの安全な HTML を渡す」
-  という責務を関数の docstring で明示すること。
-- トポロジー図で、同じ Pod が複数の理由 (hostPath 用・hostPID 用など) で
-  breakout_chains に複数回登場すると、同じ矢印が重ねて描画されラベルが
-  読めなくなった。`(namespace, pod, node, 矢印種別)` で重複除去してから描画する。
-- これらはすべて **実際にブラウザで生成物を開いて確認して** 見つかった。
-  JSON の中身が正しくても、テンプレート化の過程 (エスケープ処理・レイアウト
-  計算) にバグが入り込みうるので、コードを書いただけで済ませず、
-  ローカル HTTP サーバーなどで実際にレンダリングして目視確認すること。
+RBAC トークン昇格・Pod Security ブレイクアウト・NetworkPolicy バイパス・
+イメージ脆弱性×ノード脱出手段の組み合わせを検出する「攻撃チェーン検出」と、
+それをトポロジー図付きで可視化する HTML ダッシュボードは、いずれも
+PownForge の `kubernetes-audit` プラグイン(`src/pownforge/plugins/
+kubernetes_audit.py`)と `reporting/kubernetes_dashboard.py`
+(`attack-session report --format html` から自動描画)に移植済み。
+このリポジトリには実装を置かない。設計上の教訓（system namespace の
+誤検出対策など）も含め、PownForge の `docs/handbook.md` を参照すること。
 
 ## コミットメッセージ規約
 
-以下は KubeForge が今後採用する規約（過去のコミットはこれ以前に作成されたため
-必ずしも従っていない）。
-
 - 日本語で記述する。
 - `type(scope): 要約` の Conventional Commits 風の 1 行目にする
-  （例: `feat(scripts): rbac_audit.py にトークン昇格チェーン検出を追加`、
+  （例: `feat(kind): kind-config.yamlにCISベンチマーク是正パッチを追加`、
   `fix(kind): calico rollout の CRD 競合状態を修正`、
-  `docs(agents): 攻撃チェーン検出の設計方針を追記`、
+  `docs(agents): スコープの変更を反映`、
   `chore(gitignore): __pycache__ を除外`）。
   - `type` は `feat`（機能追加）/ `fix`（不具合修正）/ `docs`（ドキュメント）/
     `chore`（雑務・設定変更）/ `refactor` などから選ぶ。
-  - `scope` はディレクトリ名や機能名（`scripts`, `docker`, `kind`, `manifests`,
-    `agents` など）を使う。
+  - `scope` はディレクトリ名や機能名（`kind`, `manifests`, `agents` など）を使う。
 - 本文（任意）は `- ` の箇条書きで変更点を列挙する。詳細な経緯や検証結果を
   書く場合もこの形式に合わせる。
 
 ## エージェントへの指示
 
-- **対象範囲の遵守**: このリポジトリのツール・スクリプトは、`manifests/vulnerable-lab/` 配下など明示的にラボ用と分かる Kubernetes クラスタ、または利用者が管理者権限を持つ kind クラスタに対してのみ実行する。実運用クラスタや第三者が管理するクラスタへの診断コマンド実行は、利用者から明確な許可を得るまで行わない。
-- **破壊的操作の回避**: `kubectl delete`、RBAC の変更、NetworkPolicy の削除など状態を変更する操作は、診断（読み取り専用）ではなく環境構築の一部である場合のみ行い、事前に何を変更するか利用者に説明する。
-- **診断ツールの追加**: 新しいツールを Docker イメージに追加する場合は、Arch Linux の `pacman`/AUR で入手可能なものを優先する。
-- **結果の保存**: 診断スクリプトの出力は `reports/` 配下に JSON または Markdown で保存する形を基本とする。加えて `make audit` の最終ステップで `generate_dashboard.py` がそれらを集約した `dashboard.html` を生成する（詳細は「HTML ダッシュボード」節）。
+- **対象範囲の遵守**: このリポジトリのツール・マニフェストは、`manifests/vulnerable-lab/` 配下など明示的にラボ用と分かる Kubernetes クラスタ、または利用者が管理者権限を持つ kind クラスタに対してのみ実行する。実運用クラスタや第三者が管理するクラスタへのコマンド実行は、利用者から明確な許可を得るまで行わない。
+- **破壊的操作の回避**: `kubectl delete`、RBAC の変更、NetworkPolicy の削除など状態を変更する操作は、環境構築の一部である場合のみ行い、事前に何を変更するか利用者に説明する。
+- **スコープを広げない**: 診断スクリプト・監査ロジック・HTML ダッシュボード生成・診断用コンテナイメージなど、「ラボ構築」を超える機能をこのリポジトリに追加しない。それらは PownForge リポジトリ側の役割。
 - **コミットメッセージ・コード内コメント**: コミットメッセージは上記「コミットメッセージ規約」に従う。コード内コメントは既存の慣習がない限り、日本語で簡潔に記述する。
